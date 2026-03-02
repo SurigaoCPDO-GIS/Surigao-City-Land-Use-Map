@@ -1,0 +1,1012 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="initial-scale=1,user-scalable=no,maximum-scale=1,width=device-width">
+        <meta name="mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <link rel="stylesheet" href="css/leaflet.css">
+        <link rel="stylesheet" href="css/L.Control.Layers.Tree.css">
+        <link rel="stylesheet" href="css/qgis2web.css">
+        <link rel="stylesheet" href="css/fontawesome-all.min.css">
+        <link rel="stylesheet" href="css/leaflet.photon.css">
+        <link rel="stylesheet" href="css/leaflet-measure.css">
+        <style>
+        html, body, #map {
+            width: 100%;
+            height: 100%;
+            padding: 0;
+            margin: 0;
+        }
+        </style>
+        <title></title>
+    </head>
+    <body>
+        <div id="map">
+        </div>
+        <script src="js/qgis2web_expressions.js"></script>
+        <script src="js/leaflet.js"></script>
+        <script src="js/L.Control.Layers.Tree.min.js"></script>
+        <script src="js/leaflet.rotatedMarker.js"></script>
+        <script src="js/leaflet.pattern.js"></script>
+        <script src="js/leaflet-hash.js"></script>
+        <script src="js/Autolinker.min.js"></script>
+        <script src="js/rbush.min.js"></script>
+        <script src="js/labelgun.min.js"></script>
+        <script src="js/labels.js"></script>
+        <script src="js/leaflet.photon.js"></script>
+        <script src="js/leaflet-measure.js"></script>
+        <script src="data/MUNICIPALWATER_SC_1.js"></script>
+        <script src="data/PROPOSEDMAINLANDANDISLAND122025_2.js"></script>
+        <script src="data/CITY_ROAD_AND_STREETS_3.js"></script>
+        <script src="data/SURIGAOCITYBOUNDARY_TEMP_LAND_4.js"></script>
+        <script>
+        var highlightLayer;
+        function highlightFeature(e) {
+            highlightLayer = e.target;
+
+            if (e.target.feature.geometry.type === 'LineString' || e.target.feature.geometry.type === 'MultiLineString') {
+              highlightLayer.setStyle({
+                color: 'rgba(0, 255, 255, 1.00)',
+              });
+            } else {
+              highlightLayer.setStyle({
+                fillColor: 'rgba(0, 255, 255, 1.00)',
+                fillOpacity: 1
+              });
+            }
+        }
+        var map = L.map('map', {
+            zoomControl:false, maxZoom:28, minZoom:1
+        }).fitBounds([[9.784542978329629,125.48706851023276],[9.79115608453373,125.49615922809092]]);
+        var hash = new L.Hash(map);
+        map.attributionControl.setPrefix('<a href="https://github.com/tomchadwin/qgis2web" target="_blank">qgis2web</a> &middot; <a href="https://leafletjs.com" title="A JS library for interactive maps">Leaflet</a> &middot; <a href="https://qgis.org">QGIS</a>');
+        var autolinker = new Autolinker({truncate: {length: 30, location: 'smart'}});
+        // remove popup's row if "visible-with-data"
+        function removeEmptyRowsFromPopupContent(content, feature) {
+         var tempDiv = document.createElement('div');
+         tempDiv.innerHTML = content;
+         var rows = tempDiv.querySelectorAll('tr');
+         for (var i = 0; i < rows.length; i++) {
+             var td = rows[i].querySelector('td.visible-with-data');
+             var key = td ? td.id : '';
+             if (td && td.classList.contains('visible-with-data') && feature.properties[key] == null) {
+                 rows[i].parentNode.removeChild(rows[i]);
+             }
+         }
+         return tempDiv.innerHTML;
+        }
+        // modify popup if contains media
+        function addClassToPopupIfMedia(content, popup) {
+            var tempDiv = document.createElement('div');
+            tempDiv.innerHTML = content;
+            var imgTd = tempDiv.querySelector('td img');
+            if (imgTd) {
+                var src = imgTd.getAttribute('src');
+                if (/\.(jpg|jpeg|png|gif|bmp|webp|avif)$/i.test(src)) {
+                    popup._contentNode.classList.add('media');
+                    setTimeout(function() {
+                        popup.update();
+                    }, 10);
+                } else if (/\.(mp3|wav|ogg|aac)$/i.test(src)) {
+                    var audio = document.createElement('audio');
+                    audio.controls = true;
+                    audio.src = src;
+                    imgTd.parentNode.replaceChild(audio, imgTd);
+                    popup._contentNode.classList.add('media');
+                    setTimeout(function() {
+                        popup.setContent(tempDiv.innerHTML);
+                        popup.update();
+                    }, 10);
+                } else if (/\.(mp4|webm|ogg|mov)$/i.test(src)) {
+                    var video = document.createElement('video');
+                    video.controls = true;
+                    video.src = src;
+                    video.style.width = "400px";
+                    video.style.height = "300px";
+                    video.style.maxHeight = "60vh";
+                    video.style.maxWidth = "60vw";
+                    imgTd.parentNode.replaceChild(video, imgTd);
+                    popup._contentNode.classList.add('media');
+                    // Aggiorna il popup quando il video carica i metadati
+                    video.addEventListener('loadedmetadata', function() {
+                        popup.update();
+                    });
+                    setTimeout(function() {
+                        popup.setContent(tempDiv.innerHTML);
+                        popup.update();
+                    }, 10);
+                } else {
+                    popup._contentNode.classList.remove('media');
+                }
+            } else {
+                popup._contentNode.classList.remove('media');
+            }
+        }
+        var zoomControl = L.control.zoom({
+            position: 'topleft'
+        }).addTo(map);
+        var measureControl = new L.Control.Measure({
+            position: 'topleft',
+            primaryLengthUnit: 'meters',
+            secondaryLengthUnit: 'kilometers',
+            primaryAreaUnit: 'sqmeters',
+            secondaryAreaUnit: 'hectares'
+        });
+        measureControl.addTo(map);
+        document.getElementsByClassName('leaflet-control-measure-toggle')[0].innerHTML = '';
+        document.getElementsByClassName('leaflet-control-measure-toggle')[0].className += ' fas fa-ruler';
+        var bounds_group = new L.featureGroup([]);
+        function setBounds() {
+        }
+        map.createPane('pane_GoogleSatellite_0');
+        map.getPane('pane_GoogleSatellite_0').style.zIndex = 400;
+        var layer_GoogleSatellite_0 = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+            pane: 'pane_GoogleSatellite_0',
+            opacity: 1.0,
+            attribution: '',
+            minZoom: 1,
+            maxZoom: 28,
+        });
+        layer_GoogleSatellite_0;
+        map.addLayer(layer_GoogleSatellite_0);
+        function pop_MUNICIPALWATER_SC_1(feature, layer) {
+            layer.on({
+                mouseout: function(e) {
+                    for (var i in e.target._eventParents) {
+                        if (typeof e.target._eventParents[i].resetStyle === 'function') {
+                            e.target._eventParents[i].resetStyle(e.target);
+                        }
+                    }
+                },
+                mouseover: highlightFeature,
+            });
+            var popupContent = '<table>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['name'] !== null ? autolinker.link(String(feature.properties['name']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['folders'] !== null ? autolinker.link(String(feature.properties['folders']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['descriptio'] !== null ? autolinker.link(String(feature.properties['descriptio']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['altitude'] !== null ? autolinker.link(String(feature.properties['altitude']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['alt_mode'] !== null ? autolinker.link(String(feature.properties['alt_mode']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['time_begin'] !== null ? autolinker.link(String(feature.properties['time_begin']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['time_end'] !== null ? autolinker.link(String(feature.properties['time_end']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['time_when'] !== null ? autolinker.link(String(feature.properties['time_when']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_MUNICIPALWATER_SC_1_0() {
+            return {
+                pane: 'pane_MUNICIPALWATER_SC_1',
+                opacity: 1,
+                color: 'rgba(196,60,57,1.0)',
+                dashArray: '',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 1.0,
+                fillOpacity: 0,
+                interactive: false,
+            }
+        }
+        map.createPane('pane_MUNICIPALWATER_SC_1');
+        map.getPane('pane_MUNICIPALWATER_SC_1').style.zIndex = 401;
+        map.getPane('pane_MUNICIPALWATER_SC_1').style['mix-blend-mode'] = 'normal';
+        var layer_MUNICIPALWATER_SC_1 = new L.geoJson(json_MUNICIPALWATER_SC_1, {
+            attribution: '',
+            interactive: false,
+            dataVar: 'json_MUNICIPALWATER_SC_1',
+            layerName: 'layer_MUNICIPALWATER_SC_1',
+            pane: 'pane_MUNICIPALWATER_SC_1',
+            onEachFeature: pop_MUNICIPALWATER_SC_1,
+            style: style_MUNICIPALWATER_SC_1_0,
+        });
+        bounds_group.addLayer(layer_MUNICIPALWATER_SC_1);
+        map.addLayer(layer_MUNICIPALWATER_SC_1);
+        function pop_PROPOSEDMAINLANDANDISLAND122025_2(feature, layer) {
+            layer.on({
+                mouseout: function(e) {
+                    for (var i in e.target._eventParents) {
+                        if (typeof e.target._eventParents[i].resetStyle === 'function') {
+                            e.target._eventParents[i].resetStyle(e.target);
+                        }
+                    }
+                },
+                mouseover: highlightFeature,
+            });
+            var popupContent = '<table>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['LU_WEB'] !== null ? autolinker.link(String(feature.properties['LU_WEB']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['Comments'] !== null ? autolinker.link(String(feature.properties['Comments']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['LINKS'] !== null ? autolinker.link(String(feature.properties['LINKS']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['Area_web'] !== null ? autolinker.link(String(feature.properties['Area_web']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_PROPOSEDMAINLANDANDISLAND122025_2_0(feature) {
+            switch(String(feature.properties['q2wHide_LAND_USE'])) {
+                case 'Agri-Industrial':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(200,150,255,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(200,150,255,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'BUFFER':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(50,225,50,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(50,225,50,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Cemetery':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(100,225,100,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(100,225,100,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Cemetery_Memorial Park':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(100,225,100,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(100,225,100,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Commercial':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(255,0,0,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(255,0,0,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Easement':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(50,225,50,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(50,225,50,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Industrial':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(150,0,200,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(150,0,200,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Institutional':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(0,0,255,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(0,0,255,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Military Reservation':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(200,150,255,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(160,119,24,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Municipal Waters':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(175,200,225,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(175,200,225,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Municipal Waters (Production)':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(175,200,225,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(175,200,225,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Municipal Waters (Protection)':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(0,0,0,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(175,200,225,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Parks & Recreation':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(100,225,100,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(100,225,100,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Production Agriculture':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(0,0,0,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(0,150,0,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Production Forest':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(0,0,0,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(0,100,0,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Protection Agriculture':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(0,0,0,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(0,150,0,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Protection Forest':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(0,0,0,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(0,100,0,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Quarry':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(153,51,0,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(153,51,0,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Residential':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(255,255,0,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(255,255,0,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Risk /Hazard Zone':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(190,190,190,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(190,190,190,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'River Easement':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(50,225,50,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(50,225,50,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Socialized Housing':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(255,255,0,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(255,255,0,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Tourism':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(255,153,0,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(255,153,0,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Utilities, Transport and Services':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(190,190,190,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(190,190,190,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Buffer':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(55,202,32,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(55,202,32,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Mixed Use':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(200,150,255,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(61,254,31,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Rivers/Creeks':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(175,200,225,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(175,200,225,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'PUD':
+                    return {
+                pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+                opacity: 1,
+                color: 'rgba(255,255,255,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(255,255,255,1.0)',
+                interactive: true,
+            }
+                    break;
+            }
+        }
+        map.createPane('pane_PROPOSEDMAINLANDANDISLAND122025_2');
+        map.getPane('pane_PROPOSEDMAINLANDANDISLAND122025_2').style.zIndex = 402;
+        map.getPane('pane_PROPOSEDMAINLANDANDISLAND122025_2').style['mix-blend-mode'] = 'normal';
+        var layer_PROPOSEDMAINLANDANDISLAND122025_2 = new L.geoJson(json_PROPOSEDMAINLANDANDISLAND122025_2, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_PROPOSEDMAINLANDANDISLAND122025_2',
+            layerName: 'layer_PROPOSEDMAINLANDANDISLAND122025_2',
+            pane: 'pane_PROPOSEDMAINLANDANDISLAND122025_2',
+            onEachFeature: pop_PROPOSEDMAINLANDANDISLAND122025_2,
+            style: style_PROPOSEDMAINLANDANDISLAND122025_2_0,
+        });
+        bounds_group.addLayer(layer_PROPOSEDMAINLANDANDISLAND122025_2);
+        function pop_CITY_ROAD_AND_STREETS_3(feature, layer) {
+            layer.on({
+                mouseout: function(e) {
+                    for (var i in e.target._eventParents) {
+                        if (typeof e.target._eventParents[i].resetStyle === 'function') {
+                            e.target._eventParents[i].resetStyle(e.target);
+                        }
+                    }
+                },
+                mouseover: highlightFeature,
+            });
+            var popupContent = '<table>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['full_id'] !== null ? autolinker.link(String(feature.properties['full_id']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['osm_id'] !== null ? autolinker.link(String(feature.properties['osm_id']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['osm_type'] !== null ? autolinker.link(String(feature.properties['osm_type']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['highway'] !== null ? autolinker.link(String(feature.properties['highway']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['service'] !== null ? autolinker.link(String(feature.properties['service']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['bicycle'] !== null ? autolinker.link(String(feature.properties['bicycle']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['junction'] !== null ? autolinker.link(String(feature.properties['junction']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['noref'] !== null ? autolinker.link(String(feature.properties['noref']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['constructi'] !== null ? autolinker.link(String(feature.properties['constructi']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['covered'] !== null ? autolinker.link(String(feature.properties['covered']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['source_nam'] !== null ? autolinker.link(String(feature.properties['source_nam']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['sidewalk'] !== null ? autolinker.link(String(feature.properties['sidewalk']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['lanes_both'] !== null ? autolinker.link(String(feature.properties['lanes_both']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['motor_vehi'] !== null ? autolinker.link(String(feature.properties['motor_vehi']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['horse'] !== null ? autolinker.link(String(feature.properties['horse']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['minspeed_l'] !== null ? autolinker.link(String(feature.properties['minspeed_l']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['minspeed_1'] !== null ? autolinker.link(String(feature.properties['minspeed_1']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['man_made'] !== null ? autolinker.link(String(feature.properties['man_made']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['embankment'] !== null ? autolinker.link(String(feature.properties['embankment']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['ford'] !== null ? autolinker.link(String(feature.properties['ford']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['width'] !== null ? autolinker.link(String(feature.properties['width']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['short_name'] !== null ? autolinker.link(String(feature.properties['short_name']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['alt_name'] !== null ? autolinker.link(String(feature.properties['alt_name']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['noname'] !== null ? autolinker.link(String(feature.properties['noname']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['source_max'] !== null ? autolinker.link(String(feature.properties['source_max']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['access'] !== null ? autolinker.link(String(feature.properties['access']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['name_etymo'] !== null ? autolinker.link(String(feature.properties['name_etymo']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['name_ety_1'] !== null ? autolinker.link(String(feature.properties['name_ety_1']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['name_ety_2'] !== null ? autolinker.link(String(feature.properties['name_ety_2']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['source_nat'] !== null ? autolinker.link(String(feature.properties['source_nat']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['nat_name'] !== null ? autolinker.link(String(feature.properties['nat_name']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['ref'] !== null ? autolinker.link(String(feature.properties['ref']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['int_ref'] !== null ? autolinker.link(String(feature.properties['int_ref']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['foot'] !== null ? autolinker.link(String(feature.properties['foot']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['maxweight'] !== null ? autolinker.link(String(feature.properties['maxweight']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['bridge_nam'] !== null ? autolinker.link(String(feature.properties['bridge_nam']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['bridge_str'] !== null ? autolinker.link(String(feature.properties['bridge_str']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['layer'] !== null ? autolinker.link(String(feature.properties['layer']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['bridge'] !== null ? autolinker.link(String(feature.properties['bridge']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['designatio'] !== null ? autolinker.link(String(feature.properties['designatio']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['maxspeed'] !== null ? autolinker.link(String(feature.properties['maxspeed']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['surface'] !== null ? autolinker.link(String(feature.properties['surface']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['oneway'] !== null ? autolinker.link(String(feature.properties['oneway']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['name'] !== null ? autolinker.link(String(feature.properties['name']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['lanes'] !== null ? autolinker.link(String(feature.properties['lanes']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_CITY_ROAD_AND_STREETS_3_0() {
+            return {
+                pane: 'pane_CITY_ROAD_AND_STREETS_3',
+                opacity: 1,
+                color: 'rgba(0,0,0,1.0)',
+                dashArray: '',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 1.0,
+                fillOpacity: 0,
+                interactive: false,
+            }
+        }
+        map.createPane('pane_CITY_ROAD_AND_STREETS_3');
+        map.getPane('pane_CITY_ROAD_AND_STREETS_3').style.zIndex = 403;
+        map.getPane('pane_CITY_ROAD_AND_STREETS_3').style['mix-blend-mode'] = 'normal';
+        var layer_CITY_ROAD_AND_STREETS_3 = new L.geoJson(json_CITY_ROAD_AND_STREETS_3, {
+            attribution: '',
+            interactive: false,
+            dataVar: 'json_CITY_ROAD_AND_STREETS_3',
+            layerName: 'layer_CITY_ROAD_AND_STREETS_3',
+            pane: 'pane_CITY_ROAD_AND_STREETS_3',
+            onEachFeature: pop_CITY_ROAD_AND_STREETS_3,
+            style: style_CITY_ROAD_AND_STREETS_3_0,
+        });
+        bounds_group.addLayer(layer_CITY_ROAD_AND_STREETS_3);
+        map.addLayer(layer_CITY_ROAD_AND_STREETS_3);
+        function pop_SURIGAOCITYBOUNDARY_TEMP_LAND_4(feature, layer) {
+            layer.on({
+                mouseout: function(e) {
+                    for (var i in e.target._eventParents) {
+                        if (typeof e.target._eventParents[i].resetStyle === 'function') {
+                            e.target._eventParents[i].resetStyle(e.target);
+                        }
+                    }
+                },
+                mouseover: highlightFeature,
+            });
+            var popupContent = '<table>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['fid'] !== null ? autolinker.link(String(feature.properties['fid']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['name_2'] !== null ? autolinker.link(String(feature.properties['name_2']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['AREA_HAS'] !== null ? autolinker.link(String(feature.properties['AREA_HAS']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_SURIGAOCITYBOUNDARY_TEMP_LAND_4_0() {
+            return {
+                pane: 'pane_SURIGAOCITYBOUNDARY_TEMP_LAND_4',
+                opacity: 1,
+                color: 'rgba(0,255,0,1.0)',
+                dashArray: '',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 2.0,
+                fillOpacity: 0,
+                interactive: false,
+            }
+        }
+        map.createPane('pane_SURIGAOCITYBOUNDARY_TEMP_LAND_4');
+        map.getPane('pane_SURIGAOCITYBOUNDARY_TEMP_LAND_4').style.zIndex = 404;
+        map.getPane('pane_SURIGAOCITYBOUNDARY_TEMP_LAND_4').style['mix-blend-mode'] = 'normal';
+        var layer_SURIGAOCITYBOUNDARY_TEMP_LAND_4 = new L.geoJson(json_SURIGAOCITYBOUNDARY_TEMP_LAND_4, {
+            attribution: '',
+            interactive: false,
+            dataVar: 'json_SURIGAOCITYBOUNDARY_TEMP_LAND_4',
+            layerName: 'layer_SURIGAOCITYBOUNDARY_TEMP_LAND_4',
+            pane: 'pane_SURIGAOCITYBOUNDARY_TEMP_LAND_4',
+            onEachFeature: pop_SURIGAOCITYBOUNDARY_TEMP_LAND_4,
+            style: style_SURIGAOCITYBOUNDARY_TEMP_LAND_4_0,
+        });
+        bounds_group.addLayer(layer_SURIGAOCITYBOUNDARY_TEMP_LAND_4);
+        map.addLayer(layer_SURIGAOCITYBOUNDARY_TEMP_LAND_4);
+        var overlaysTree = [
+            {label: '<img src="legend/SURIGAOCITYBOUNDARY_TEMP_LAND_4.png" /> SURIGAO CITY BOUNDARY_TEMP_LAND', layer: layer_SURIGAOCITYBOUNDARY_TEMP_LAND_4},
+            {label: '<img src="legend/CITY_ROAD_AND_STREETS_3.png" /> CITY_ROAD_AND_STREETS', layer: layer_CITY_ROAD_AND_STREETS_3},
+        {label: '<b>PLUM 12-20-25</b>',  selectAllCheckbox: true, children: [
+            {label: 'PROPOSED MAINLAND AND ISLAND 12-20-25<br /><table><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_AgriIndustrial0.png" /></td><td>Agri-Industrial</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_BUFFER1.png" /></td><td>BUFFER</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_Cemetery2.png" /></td><td>Cemetery</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_CemeteryMemorialPark3.png" /></td><td>Cemetery_Memorial Park</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_Commercial4.png" /></td><td>Commercial</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_Easement5.png" /></td><td>Easement</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_Industrial6.png" /></td><td>Industrial</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_Institutional7.png" /></td><td>Institutional</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_MilitaryReservation8.png" /></td><td>Military Reservation</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_MunicipalWaters9.png" /></td><td>Municipal Waters</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_MunicipalWatersProduction10.png" /></td><td>Municipal Waters (Production)</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_MunicipalWatersProtection11.png" /></td><td>Municipal Waters (Protection)</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_ParksRecreation12.png" /></td><td>Parks & Recreation</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_ProductionAgriculture13.png" /></td><td>Production Agriculture</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_ProductionForest14.png" /></td><td>Production Forest</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_ProtectionAgriculture15.png" /></td><td>Protection Agriculture</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_ProtectionForest16.png" /></td><td>Protection Forest</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_Quarry17.png" /></td><td>Quarry</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_Residential18.png" /></td><td>Residential</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_RiskHazardZone19.png" /></td><td>Risk /Hazard Zone</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_RiverEasement20.png" /></td><td>River Easement</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_SocializedHousing21.png" /></td><td>Socialized Housing</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_Tourism22.png" /></td><td>Tourism</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_UtilitiesTransportandServices23.png" /></td><td>Utilities, Transport and Services</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_Buffer24.png" /></td><td>Buffer</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_MixedUse25.png" /></td><td>Mixed Use</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_RiversCreeks26.png" /></td><td>Rivers/Creeks</td></tr><tr><td style="text-align: center;"><img src="legend/PROPOSEDMAINLANDANDISLAND122025_2_PUD27.png" /></td><td>PUD</td></tr></table>', layer: layer_PROPOSEDMAINLANDANDISLAND122025_2},]},
+            {label: '<img src="legend/MUNICIPALWATER_SC_1.png" /> MUNICIPAL WATER_S.C', layer: layer_MUNICIPALWATER_SC_1},
+            {label: "Google Satellite", layer: layer_GoogleSatellite_0, radioGroup: 'bm' },]
+        var lay = L.control.layers.tree(null, overlaysTree,{
+            //namedToggle: true,
+            //selectorBack: false,
+            //closedSymbol: '&#8862; &#x1f5c0;',
+            //openedSymbol: '&#8863; &#x1f5c1;',
+            //collapseAll: 'Collapse all',
+            //expandAll: 'Expand all',
+            collapsed: false, 
+        });
+        lay.addTo(map);
+		document.addEventListener("DOMContentLoaded", function() {
+            // set new Layers List height which considers toggle icon
+            function newLayersListHeight() {
+                var layerScrollbarElement = document.querySelector('.leaflet-control-layers-scrollbar');
+                if (layerScrollbarElement) {
+                    var layersListElement = document.querySelector('.leaflet-control-layers-list');
+                    var originalHeight = layersListElement.style.height 
+                        || window.getComputedStyle(layersListElement).height;
+                    var newHeight = parseFloat(originalHeight) - 50;
+                    layersListElement.style.height = newHeight + 'px';
+                }
+            }
+            var isLayersListExpanded = true;
+            var controlLayersElement = document.querySelector('.leaflet-control-layers');
+            var toggleLayerControl = document.querySelector('.leaflet-control-layers-toggle');
+            // toggle Collapsed/Expanded and apply new Layers List height
+            toggleLayerControl.addEventListener('click', function() {
+                if (isLayersListExpanded) {
+                    controlLayersElement.classList.remove('leaflet-control-layers-expanded');
+                } else {
+                    controlLayersElement.classList.add('leaflet-control-layers-expanded');
+                }
+                isLayersListExpanded = !isLayersListExpanded;
+                newLayersListHeight()
+            });	
+			// apply new Layers List height if toggle layerstree
+			if (controlLayersElement) {
+				controlLayersElement.addEventListener('click', function(event) {
+					var toggleLayerHeaderPointer = event.target.closest('.leaflet-layerstree-header-pointer span');
+					if (toggleLayerHeaderPointer) {
+						newLayersListHeight();
+					}
+				});
+			}
+            // Collapsed/Expanded at Start to apply new height
+            setTimeout(function() {
+                toggleLayerControl.click();
+            }, 10);
+            setTimeout(function() {
+                toggleLayerControl.click();
+            }, 10);
+            // Collapsed touch/small screen
+            var isSmallScreen = window.innerWidth < 650;
+            if (isSmallScreen) {
+                setTimeout(function() {
+                    controlLayersElement.classList.remove('leaflet-control-layers-expanded');
+                    isLayersListExpanded = !isLayersListExpanded;
+                }, 500);
+            }  
+        });       
+        setBounds();
+        resetLabels([layer_CITY_ROAD_AND_STREETS_3]);
+        map.on("zoomend", function(){
+            resetLabels([layer_CITY_ROAD_AND_STREETS_3]);
+        });
+        map.on("layeradd", function(){
+            resetLabels([layer_CITY_ROAD_AND_STREETS_3]);
+        });
+        map.on("layerremove", function(){
+            resetLabels([layer_CITY_ROAD_AND_STREETS_3]);
+        });
+        </script>        
+    </body>
+</html>
